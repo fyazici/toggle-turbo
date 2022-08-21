@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.0)
-project(toggle-turbo LANGUAGES C)
+project(toggle-turbo)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SRCS 
-    src/main.c
+    src/main.cpp
+    main.rc
 )
 
 add_executable(toggle-turbo ${SRCS})
