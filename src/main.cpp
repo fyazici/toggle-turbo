@@ -1,5 +1,5 @@
-#include <iostream>
 #include <memory>
+#include <regex>
 
 extern "C" {
 #define WIN32_LEAN_AND_MEAN
@@ -14,34 +14,36 @@ class TurboController
 public:
     bool set_state(bool state)
     {
-        char buf1[512], buf2[512];
+
+        char proc_out[512];
         FILE *fd = popen("powercfg.exe /GETACTIVESCHEME", "r");
-        fread(buf1, 1, 512, fd);
+        fread(proc_out, 1, 512, fd);
         pclose(fd);
-        char *p1 = buf1, *p2;
-        while (*p1 != ':' && *p1 != 0)
-            ++p1;
-        ++p1;
-        ++p1;
-        p2 = p1;
-        while (*p2 != ' ' && *p2 != 0)
-            ++p2;
-        *p2 = 0;
+
+        std::regex guid_regex("[^\\:]*\\:\\s+([\\w-]+)\\s+\\(.*\\)");
+        std::cmatch cm;
+        if (!std::regex_search(proc_out, cm, guid_regex))
+        {
+            return false;
+        }
+        auto guid_str = cm[1].str().c_str();
+
+        char system_cmd[512];
 
         if (state)
         {
-            sprintf(buf2, "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003", p1);
-            system(buf2);
-            sprintf(buf2, "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003", p1);
-            system(buf2);
+            sprintf(system_cmd, "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003", guid_str);
+            system(system_cmd);
+            sprintf(system_cmd, "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003", guid_str);
+            system(system_cmd);
             system("powercfg.exe -S SCHEME_CURRENT");
         }
         else
         {
-            sprintf(buf2, "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000", p1);
-            system(buf2);
-            sprintf(buf2, "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000", p1);
-            system(buf2);
+            sprintf(system_cmd, "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000", guid_str);
+            system(system_cmd);
+            sprintf(system_cmd, "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000", guid_str);
+            system(system_cmd);
             system("powercfg.exe -S SCHEME_CURRENT");
         }
 
@@ -128,12 +130,10 @@ public:
         if (ctl_.get_state())
         {
             notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_ON"), IMAGE_ICON, 0, 0, 0);
-            std::clog << "update notifyicon state: on\n";
         }
         else
         {
             notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_OFF"), IMAGE_ICON, 0, 0, 0);
-            std::clog << "update notifyicon state: off\n";
         }
         Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
     }
@@ -143,14 +143,36 @@ public:
         if (ctl_.get_state())
         {
             notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_ON"), IMAGE_ICON, 0, 0, 0);
-            std::clog << "update notifyicon state: on\n";
         }
         else
         {
             notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_OFF"), IMAGE_ICON, 0, 0, 0);
-            std::clog << "update notifyicon state: off\n";
         }
         Shell_NotifyIcon(NIM_MODIFY, &notify_icon_data_);
+    }
+
+    void display_command_help()
+    {
+        int r = MessageBox(hwnd_, TEXT(
+            "Command to enable the TurboBoost control:\n"
+            "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE\n"
+            "Copy to clipboard?"),
+            TEXT("ToggleTurbo Control"),
+            MB_YESNO | MB_ICONINFORMATION
+        );
+
+        if (r == IDYES)
+        {
+            const char *cmd = "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE";
+            const size_t len = strlen(cmd) + 1;
+            HGLOBAL hMem =  GlobalAlloc(GMEM_MOVEABLE, len);
+            memcpy(GlobalLock(hMem), cmd, len);
+            GlobalUnlock(hMem);
+            OpenClipboard(0);
+            EmptyClipboard();
+            SetClipboardData(CF_TEXT, hMem);
+            CloseClipboard();
+        }
     }
 
     LRESULT handle_wndproc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -158,7 +180,6 @@ public:
         if (message == WM_TASKBARCREATED)
         {
             Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
-            std::clog << "taskbar_create\n";
             return 0;
         }
 
@@ -178,26 +199,7 @@ public:
                 }
                 else if (lParam == WM_MBUTTONUP)
                 {
-                    int r = MessageBox(hwnd, TEXT(
-                        "Command to enable the TurboBoost control:\n"
-                        "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE\n"
-                        "Copy to clipboard?"),
-                        TEXT("ToggleTurbo Control"),
-                        MB_YESNO | MB_ICONINFORMATION
-                    );
-
-                    if (r == IDYES)
-                    {
-                        const char *cmd = "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE";
-                        const size_t len = strlen(cmd) + 1;
-                        HGLOBAL hMem =  GlobalAlloc(GMEM_MOVEABLE, len);
-                        memcpy(GlobalLock(hMem), cmd, len);
-                        GlobalUnlock(hMem);
-                        OpenClipboard(0);
-                        EmptyClipboard();
-                        SetClipboardData(CF_TEXT, hMem);
-                        CloseClipboard();
-                    }
+                    display_command_help();
                 }
             }
             break;
