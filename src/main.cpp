@@ -1,5 +1,4 @@
-#include <memory>
-#include <regex>
+#include <cstdio>
 
 extern "C" {
 #define WIN32_LEAN_AND_MEAN
@@ -14,39 +13,37 @@ class TurboController
 public:
     bool set_state(bool state)
     {
+        const size_t PIPE_BUFFER_LENGTH = 128, CMD_BUFFER_LENGTH = 512;
+        const char *CMD_AC_ON_F = "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003";
+        const char *CMD_DC_ON_F = "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003";
+        const char *CMD_AC_OFF_F = "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000";
+        const char *CMD_DC_OFF_F = "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000";
+        const char *CMD_CURRENT_SCHEME = "powercfg.exe -S SCHEME_CURRENT";
 
-        char proc_out[512];
-        FILE *fd = popen("powercfg.exe /GETACTIVESCHEME", "r");
-        fread(proc_out, 1, 512, fd);
-        pclose(fd);
+        char proc_out[PIPE_BUFFER_LENGTH];
+        FILE *fd = ::popen("powercfg.exe /GETACTIVESCHEME", "r");
+        ::fgets(proc_out, PIPE_BUFFER_LENGTH, fd);
+        ::pclose(fd);
 
-        std::regex guid_regex("[^\\:]*\\:\\s+([\\w-]+)\\s+\\(.*\\)");
-        std::cmatch cm;
-        if (!std::regex_search(proc_out, cm, guid_regex))
-        {
-            return false;
-        }
-        auto guid_str = cm[1].str().c_str();
+        auto guid_str = find_trim_guid(proc_out, PIPE_BUFFER_LENGTH);
 
-        char system_cmd[512];
-
+        char system_cmd[CMD_BUFFER_LENGTH];
         if (state)
         {
-            sprintf(system_cmd, "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003", guid_str);
-            system(system_cmd);
-            sprintf(system_cmd, "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003", guid_str);
-            system(system_cmd);
-            system("powercfg.exe -S SCHEME_CURRENT");
+            ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_AC_ON_F, guid_str);
+            ::system(system_cmd);
+            ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_DC_ON_F, guid_str);
+            ::system(system_cmd);
         }
         else
         {
-            sprintf(system_cmd, "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000", guid_str);
-            system(system_cmd);
-            sprintf(system_cmd, "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000", guid_str);
-            system(system_cmd);
-            system("powercfg.exe -S SCHEME_CURRENT");
+            ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_AC_OFF_F, guid_str);
+            ::system(system_cmd);
+            ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_DC_OFF_F, guid_str);
+            ::system(system_cmd);
         }
 
+        ::system(CMD_CURRENT_SCHEME);
         state_ = state;
         return true;
     }
@@ -64,6 +61,21 @@ public:
 
 private:
     bool state_;
+
+    const char *find_trim_guid(char * first, size_t length)
+    {
+        const char * const end = first + length;
+        char *tmp;
+        while ((*first != ':') && (*first != 0) && (first != end))
+            ++first;
+        ++first;
+        ++first;
+        tmp = first;
+        while ((*tmp != ' ') && (*tmp != 0) && (tmp != end))
+            ++tmp;
+        *tmp = 0;
+        return first;
+    }
 };
 
 class App
@@ -91,7 +103,8 @@ public:
         TCHAR className[] = TEXT("ToggleTurboClass");
         WM_TASKBARCREATED = RegisterWindowMessageA("TaskbarCreated");
 
-        WNDCLASSEX wnd = {0};
+        WNDCLASSEX wnd;
+        ::memset(&wnd, 0, sizeof(wnd));
 
         wnd.hInstance = hinstance_;
         wnd.lpszClassName = className;
@@ -99,17 +112,17 @@ public:
         wnd.style = CS_HREDRAW | CS_VREDRAW;
         wnd.cbSize = sizeof(WNDCLASSEX);
 
-        wnd.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-        wnd.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-        wnd.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wnd.hIcon = ::LoadIcon(NULL, IDI_APPLICATION);
+        wnd.hIconSm = ::LoadIcon(NULL, IDI_APPLICATION);
+        wnd.hCursor = ::LoadCursor(NULL, IDC_ARROW);
         wnd.hbrBackground = (HBRUSH)COLOR_APPWORKSPACE;
 
         if (!RegisterClassEx(&wnd))
         {
-            FatalAppExit(0, TEXT("Couldn't register window class!"));
+            ::FatalAppExit(0, TEXT("Couldn't register window class!"));
         }
 
-        hwnd_ = CreateWindowEx(
+        hwnd_ = ::CreateWindowEx(
             0, className,
             TEXT("ToggleTurbo"),
             WS_OVERLAPPEDWINDOW,
@@ -121,7 +134,7 @@ public:
 
     void init_notifyicon()
     {
-        memset(&notify_icon_data_, 0, sizeof(NOTIFYICONDATA));
+        ::memset(&notify_icon_data_, 0, sizeof(NOTIFYICONDATA));
         notify_icon_data_.cbSize = sizeof(NOTIFYICONDATA);
         notify_icon_data_.hWnd = hwnd_;
         notify_icon_data_.uID = ID_TRAY_APP_ICON;
@@ -129,31 +142,33 @@ public:
         notify_icon_data_.uCallbackMessage = WM_TRAYICON;
         if (ctl_.get_state())
         {
-            notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_ON"), IMAGE_ICON, 0, 0, 0);
+            notify_icon_data_.hIcon = (HICON)::LoadImage(hinstance_, TEXT("ICO_TURBO_ON"), IMAGE_ICON, 0, 0, 0);
         }
         else
         {
-            notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_OFF"), IMAGE_ICON, 0, 0, 0);
+            notify_icon_data_.hIcon = (HICON)::LoadImage(hinstance_, TEXT("ICO_TURBO_OFF"), IMAGE_ICON, 0, 0, 0);
         }
-        Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
+        ::Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
     }
 
     void update_notifyicon()
     {
+        HICON old_icon = notify_icon_data_.hIcon;
         if (ctl_.get_state())
         {
-            notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_ON"), IMAGE_ICON, 0, 0, 0);
+            notify_icon_data_.hIcon = (HICON)::LoadImage(hinstance_, TEXT("ICO_TURBO_ON"), IMAGE_ICON, 0, 0, 0);
         }
         else
         {
-            notify_icon_data_.hIcon = (HICON)LoadImage(hinstance_, TEXT("ICO_TURBO_OFF"), IMAGE_ICON, 0, 0, 0);
+            notify_icon_data_.hIcon = (HICON)::LoadImage(hinstance_, TEXT("ICO_TURBO_OFF"), IMAGE_ICON, 0, 0, 0);
         }
-        Shell_NotifyIcon(NIM_MODIFY, &notify_icon_data_);
+        ::Shell_NotifyIcon(NIM_MODIFY, &notify_icon_data_);
+        DestroyIcon(old_icon);
     }
 
     void display_command_help()
     {
-        int r = MessageBox(hwnd_, TEXT(
+        int r = ::MessageBox(hwnd_, TEXT(
             "Command to enable the TurboBoost control:\n"
             "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE\n"
             "Copy to clipboard?"),
@@ -165,13 +180,13 @@ public:
         {
             const char *cmd = "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE";
             const size_t len = strlen(cmd) + 1;
-            HGLOBAL hMem =  GlobalAlloc(GMEM_MOVEABLE, len);
-            memcpy(GlobalLock(hMem), cmd, len);
-            GlobalUnlock(hMem);
-            OpenClipboard(0);
-            EmptyClipboard();
-            SetClipboardData(CF_TEXT, hMem);
-            CloseClipboard();
+            HGLOBAL hMem =  ::GlobalAlloc(GMEM_MOVEABLE, len);
+            ::memcpy(::GlobalLock(hMem), cmd, len);
+            ::GlobalUnlock(hMem);
+            ::OpenClipboard(0);
+            ::EmptyClipboard();
+            ::SetClipboardData(CF_TEXT, hMem);
+            ::CloseClipboard();
         }
     }
 
@@ -179,7 +194,7 @@ public:
     {
         if (message == WM_TASKBARCREATED)
         {
-            Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
+            ::Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
             return 0;
         }
 
@@ -204,35 +219,43 @@ public:
             }
             break;
         }
-        return DefWindowProc(hwnd, message, wParam, lParam);
+        return ::DefWindowProc(hwnd, message, wParam, lParam);
     }
 
-    ~App()
+    virtual ~App()
     {
-        Shell_NotifyIcon(NIM_DELETE, &notify_icon_data_);
+        ::Shell_NotifyIcon(NIM_DELETE, &notify_icon_data_);
     }
 };
 
-std::unique_ptr<App> app;
+namespace {
+App *app;
+}
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR args, int iCmdShow)
+int WINAPI WinMain(
+    HINSTANCE hInstance, 
+    [[maybe_unused]] HINSTANCE hPrevInstance, 
+    [[maybe_unused]] LPSTR args, 
+    [[maybe_unused]] int iCmdShow)
 {
     #ifdef NDEBUG
-    AllocConsole();
-    ShowWindow(GetConsoleWindow(), SW_HIDE);
+    ::AllocConsole();
+    ::ShowWindow(::GetConsoleWindow(), SW_HIDE);
     #endif
 
-    app = std::make_unique<App>(hInstance);
+    App app_(hInstance);
+    app = &app_;
+
     app->init_window();
     app->init_notifyicon();
 
     MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0))
+    while (::GetMessage(&msg, NULL, 0, 0))
     {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        ::TranslateMessage(&msg);
+        ::DispatchMessage(&msg);
     }
-
+    
     return msg.wParam;
 }
 
