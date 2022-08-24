@@ -11,16 +11,18 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 class TurboController
 {
 public:
-    TurboController(): state_{false} {} // TODO: retrieve initial state
-    
+    TurboController() : state_{false} {} // TODO: retrieve initial state
+
     auto set_state(bool state) noexcept -> bool
     {
-        if (!apply_power_scheme(state)) return false;
+        if (!apply_power_scheme(state))
+            return false;
         state_ = state;
         return true;
     }
 
-    auto get_state() const noexcept -> bool {
+    auto get_state() const noexcept -> bool
+    {
         return state_;
     }
 
@@ -30,21 +32,23 @@ public:
     }
 
 private:
-    auto find_trim_guid(char * first, const size_t length) const noexcept -> const char *
+    auto find_trim_guid(char *first, const size_t length) const noexcept -> const char *
     {
-        const char * const end = first + length;
-        
+        const char *const end = first + length;
+
         while ((*first != ':') && (first < end))
             ++first;
         ++first;
         ++first;
-        if (first >= end) return nullptr;
+        if (first >= end)
+            return nullptr;
 
         char *tmp = first;
         while ((*tmp != ' ') && (tmp < end))
             ++tmp;
-        if (first >= end) return nullptr;
-        
+        if (first >= end)
+            return nullptr;
+
         *tmp = 0;
 
         return first;
@@ -64,35 +68,41 @@ private:
         auto r = ::fgets(proc_out, PIPE_BUFFER_LENGTH, fd);
         ::pclose(fd);
 
-        if (r != proc_out) return false;
+        if (r != proc_out)
+            return false;
 
         auto guid_str = find_trim_guid(proc_out, PIPE_BUFFER_LENGTH);
-        
-        if (!guid_str) return false;
+
+        if (!guid_str)
+            return false;
 
         char system_cmd[CMD_BUFFER_LENGTH];
         if (state)
         {
             auto r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_AC_ON_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH)) return false;
-            
+            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
+                return false;
+
             ::system(system_cmd);
 
             r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_DC_ON_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH)) return false;
-            
+            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
+                return false;
+
             ::system(system_cmd);
         }
         else
         {
             auto r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_AC_OFF_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH)) return false;
-            
+            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
+                return false;
+
             ::system(system_cmd);
 
             r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_DC_OFF_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH)) return false;
-            
+            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
+                return false;
+
             ::system(system_cmd);
         }
 
@@ -118,7 +128,7 @@ public:
         notify_icon_data_.uID = ID_TRAY_APP_ICON;
         notify_icon_data_.uFlags = NIF_ICON | NIF_MESSAGE;
         notify_icon_data_.uCallbackMessage = WM_TRAYICON;
-        
+
         notify_icon_data_.hIcon = load_turbo_icon(state);
 
         ::Shell_NotifyIcon(NIM_ADD, &notify_icon_data_);
@@ -129,7 +139,7 @@ public:
     auto update(bool state) noexcept -> void
     {
         notify_icon_data_.hIcon = load_turbo_icon(state);
-        
+
         ::Shell_NotifyIcon(NIM_MODIFY, &notify_icon_data_);
         ::DestroyIcon(notify_icon_data_.hIcon);
         notify_icon_data_.hIcon = nullptr;
@@ -159,8 +169,8 @@ class App
 public:
     App(HINSTANCE hInstance)
         : hinstance_{hInstance}, turbo_ctl_{std::make_unique<TurboController>()}
-    { 
-        turbo_ctl_->set_state(true); 
+    {
+        turbo_ctl_->set_state(true);
         init_window();
     }
 
@@ -230,19 +240,17 @@ private:
 
     auto display_command_help() const noexcept -> void
     {
-        int r = ::MessageBox(hwnd_, TEXT(
-            "Command to enable the TurboBoost control:\n"
-            "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE\n"
-            "Copy to clipboard?"),
-            TEXT("ToggleTurbo Control"),
-            MB_YESNO | MB_ICONINFORMATION
-        );
+        int r = ::MessageBox(hwnd_, TEXT("Command to enable the TurboBoost control:\n"
+                                         "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE\n"
+                                         "Copy to clipboard?"),
+                             TEXT("ToggleTurbo Control"),
+                             MB_YESNO | MB_ICONINFORMATION);
 
         if (r == IDYES)
         {
             const char *cmd = "powercfg.exe -attributes SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 -ATTRIB_HIDE";
             const size_t len = strlen(cmd) + 1;
-            HGLOBAL hMem =  ::GlobalAlloc(GMEM_MOVEABLE, len);
+            HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, len);
             ::memcpy(::GlobalLock(hMem), cmd, len);
             ::GlobalUnlock(hMem);
             ::OpenClipboard(0);
@@ -261,15 +269,15 @@ private:
 std::unique_ptr<App> app;
 
 int WINAPI WinMain(
-    HINSTANCE hInstance, 
-    [[maybe_unused]] HINSTANCE hPrevInstance, 
-    [[maybe_unused]] LPSTR args, 
+    HINSTANCE hInstance,
+    [[maybe_unused]] HINSTANCE hPrevInstance,
+    [[maybe_unused]] LPSTR args,
     [[maybe_unused]] int iCmdShow)
 {
-    #ifdef NDEBUG
+#ifdef NDEBUG
     ::AllocConsole();
     ::ShowWindow(::GetConsoleWindow(), SW_HIDE);
-    #endif
+#endif
 
     app = std::make_unique<App>(hInstance);
 
@@ -279,7 +287,7 @@ int WINAPI WinMain(
         ::TranslateMessage(&msg);
         ::DispatchMessage(&msg);
     }
-    
+
     return msg.wParam;
 }
 
