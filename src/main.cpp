@@ -6,6 +6,8 @@
 #include <windows.h>
 #include <shellapi.h>
 
+#include "resources.h"
+
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 class TurboController
@@ -154,9 +156,9 @@ private:
     auto load_turbo_icon(bool state) const noexcept -> HICON
     {
         if (state)
-            return ::LoadIcon(hinstance_, TEXT("ICO_TURBO_ON"));
+            return ::LoadIcon(hinstance_, MAKEINTRESOURCE(ICO_TURBO_ON));
         else
-            return ::LoadIcon(hinstance_, TEXT("ICO_TURBO_OFF"));
+            return ::LoadIcon(hinstance_, MAKEINTRESOURCE(ICO_TURBO_OFF));
     }
 
     const HINSTANCE hinstance_;
