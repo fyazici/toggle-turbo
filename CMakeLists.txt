@@ -9,6 +9,6 @@ set(SRCS
 )
 
 add_executable(toggle-turbo ${SRCS})
-target_compile_options(toggle-turbo PRIVATE -Werror -Wall -Wextra)
+target_compile_options(toggle-turbo PRIVATE -Wall -Wextra)
 target_compile_features(toggle-turbo PRIVATE cxx_std_11)
 target_link_options(toggle-turbo PRIVATE -static -Wl,-strip-all)
