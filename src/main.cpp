@@ -1,5 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
+
+#include <algorithm>
+#include <array>
 #include <memory>
 
 #define WIN32_LEAN_AND_MEAN
@@ -34,82 +37,55 @@ public:
     }
 
 private:
-    auto find_trim_guid(char *first, const size_t length) const noexcept -> const char *
+    static auto query_power_scheme() noexcept -> const char *
     {
-        const char *const end = first + length;
+        std::array<char, 128> proc_buf;
+        {
+            auto proc_fd = std::unique_ptr<FILE, decltype(&pclose)>(popen("powercfg.exe /GETACTIVESCHEME", "r"), pclose);
+            auto r = ::fgets(proc_buf.data(), proc_buf.size(), proc_fd.get());
+            if (r != proc_buf.data())
+                return nullptr;
+        }
 
-        while ((*first != ':') && (first < end))
-            ++first;
-        ++first;
-        ++first;
-        if (first >= end)
+        auto guid_start = std::find(proc_buf.begin(), proc_buf.end(), ':');
+        if (guid_start == proc_buf.end())
             return nullptr;
+        guid_start += 2;
 
-        char *tmp = first;
-        while ((*tmp != ' ') && (tmp < end))
-            ++tmp;
-        if (first >= end)
+        auto guid_end = std::find(guid_start, proc_buf.end(), ' ');
+        if (guid_end == proc_buf.end())
             return nullptr;
-
-        *tmp = 0;
-
-        return first;
+        *guid_end = 0;
+        return guid_start;
     }
 
-    auto apply_power_scheme(const bool state) const noexcept -> bool
+    static auto format_and_invoke(const char *guid, const bool state) noexcept -> bool
     {
-        const size_t PIPE_BUFFER_LENGTH = 128, CMD_BUFFER_LENGTH = 512;
-        const char *CMD_AC_ON_F = "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003";
-        const char *CMD_DC_ON_F = "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 003";
-        const char *CMD_AC_OFF_F = "powercfg.exe /SETACVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000";
-        const char *CMD_DC_OFF_F = "powercfg.exe /SETDCVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 000";
-        const char *CMD_CURRENT_SCHEME = "powercfg.exe -S SCHEME_CURRENT";
+        const char *POWER_CMD_TURBO = "powercfg.exe /SET%sVALUEINDEX %s 54533251-82be-4824-96c1-47b60b740d00 be337238-0d82-4146-a960-4f3749d470c7 %s";
+        const char *POWER_CMD_SET = "powercfg.exe -S SCHEME_CURRENT";
 
-        char proc_out[PIPE_BUFFER_LENGTH];
-        FILE *fd = ::popen("powercfg.exe /GETACTIVESCHEME", "r");
-        auto r = ::fgets(proc_out, PIPE_BUFFER_LENGTH, fd);
-        ::pclose(fd);
-
-        if (r != proc_out)
+        std::array<char, 512> cmd_buf;
+        auto r = ::snprintf(cmd_buf.data(), cmd_buf.size(), POWER_CMD_TURBO, "AC", guid, ((state) ? ("003") : ("000")));
+        if ((r < 0) || (r == cmd_buf.size()))
             return false;
+        ::system(cmd_buf.data());
 
-        auto guid_str = find_trim_guid(proc_out, PIPE_BUFFER_LENGTH);
-
-        if (!guid_str)
+        r = ::snprintf(cmd_buf.data(), cmd_buf.size(), POWER_CMD_TURBO, "DC", guid, ((state) ? ("003") : ("000")));
+        if ((r < 0) || (r == cmd_buf.size()))
             return false;
+        ::system(cmd_buf.data());
 
-        char system_cmd[CMD_BUFFER_LENGTH];
-        if (state)
-        {
-            auto r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_AC_ON_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
-                return false;
-
-            ::system(system_cmd);
-
-            r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_DC_ON_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
-                return false;
-
-            ::system(system_cmd);
-        }
-        else
-        {
-            auto r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_AC_OFF_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
-                return false;
-
-            ::system(system_cmd);
-
-            r = ::snprintf(system_cmd, CMD_BUFFER_LENGTH, CMD_DC_OFF_F, guid_str);
-            if ((r < 0) || (r == CMD_BUFFER_LENGTH))
-                return false;
-
-            ::system(system_cmd);
-        }
-
-        ::system(CMD_CURRENT_SCHEME);
+        ::system(POWER_CMD_SET);
         return true;
+    }
+
+    static auto apply_power_scheme(const bool state) noexcept -> bool
+    {
+        auto guid_start = query_power_scheme();
+        if (!guid_start)
+            return false;
+
+        return format_and_invoke(guid_start, state);
     }
 
     bool state_;
