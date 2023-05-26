@@ -31,5 +31,5 @@ There is (currently) no user interface for this program. Taskbar icon shows the 
 Todo
 ==
 
-* Remember the state of turboboost and restore the setting when closed
-* Show the existing state of turboboost upon startup (currently shows *disabled* regardless of the actual setting)
+* ~~Remember the state of turboboost and restore the setting when closed~~
+* ~~Show the existing state of turboboost upon startup (currently shows *disabled* regardless of the actual setting)~~
